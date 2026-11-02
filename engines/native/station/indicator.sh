@@ -9,6 +9,16 @@ if [ -z "${ALICE_LED_ROOT:-}" ] && [ ! -e "$LED:red:ring1" ] && [ -e /sys/class/
     LED=/sys/class/leds/micro
 fi
 case "$LED" in */micro) no_mute_switch=1 ;; esac
+# Mini 1 exposes no Plum/Micro ring; acknowledge commands without sysfs writes.
+if [ ! -e "$LED:red:ring1" ]; then
+    while IFS= read -r task_led_command; do
+        case "$task_led_command" in
+            F\ *) printf 'FRAME\n' ;;
+            B) printf 'BLUE\n' ;;
+        esac
+    done
+    exit 0
+fi
 MUTE_GPIO=${ALICE_MUTE_GPIO_STATUS:-/sys/kernel/debug/gpio}
 owned=0
 saved=''

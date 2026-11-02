@@ -42,11 +42,28 @@ def trust(config,confirm):
     if line.rstrip() not in previous.splitlines():write_private(known,previous.rstrip(b'\n')+b'\n'+line)
     config['known_hosts']=str(known)
 
+_SESSION_PASSWORD=None
+
+
+def use_session_password(password):
+    """Use a locally entered SSH password for this process; never persist it."""
+    if not isinstance(password,str) or not password or any(c in password for c in '\r\n\x00'):
+        raise ValueError('Некорректный пароль SSH')
+    global _SESSION_PASSWORD
+    _SESSION_PASSWORD=password
+
+
+def clear_session_password():
+    global _SESSION_PASSWORD
+    _SESSION_PASSWORD=None
+
+
 def connect(config,password=None):
     p=library();client=p.SSHClient();known=config.get('known_hosts')
     if not known or not Path(known).is_file():raise RuntimeError('Сначала подтвердите SSH-ключ колонки через настройку подключения.')
     client.load_host_keys(str(known));client.set_missing_host_key_policy(p.RejectPolicy())
     try:
+        if password is None:password=_SESSION_PASSWORD
         identity=config.get('identity') if password is None else None
         client.connect(config['host'],port=config.get('port',2222),username=config.get('user') or 'root',
                        password=password,key_filename=str(identity) if identity else None,

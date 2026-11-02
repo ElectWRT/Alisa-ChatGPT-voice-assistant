@@ -16,9 +16,12 @@ def inspect(config):
     device_tree=lines[2]
     hashes={line.split()[-1]:line.split()[0] for line in lines if len(line.split())==2 and len(line.split()[0])==64}
     pair=(hashes.get('/system/vendor/quasar/maind'),hashes.get('/system/vendor/quasar/libs/libyandex_evil.so'))
-    firmware=classify(device_tree,pair)
+    device_type_line=s.text("grep -m1 deviceType /system/vendor/quasar/quasar.cfg")
+    device_type_parts=device_type_line.split('"')
+    device_type=device_type_parts[3] if len(device_type_parts)>3 else None
+    firmware=classify(device_tree,pair,device_type)
     model=firmware['model'];compatible=model is not None
-    mode_supported=compatible and not (model=='lite1' and config['mode']=='bridge')
+    mode_supported=compatible and not (model in ('lite1','mini1') and config['mode']=='bridge')
     missing=[tool for tool in ['ssh','chromium'] if not shutil.which(tool)]
     if sys.platform=='win32':
         from .windows import missing as windows_missing
@@ -35,7 +38,7 @@ def inspect(config):
         if len(fields)>=6 and fields[1].isdigit() and fields[3].isdigit():
             try:available=int(fields[3])
             except ValueError:pass
-    needed=['aplay','base64','sha256sum']+(['socat'] if config['mode']=='bridge' else [])
+    needed=(['aplay','base64'] if model!='mini1' else [])+['sha256sum']+(['socat'] if config['mode']=='bridge' else [])
     missing_remote=[name for name in needed if not any(x.endswith('/'+name) for x in lines)]
     version=next((line.partition('=')[2].strip() for line in lines if line.startswith('ALISA_FIRMWARE_VERSION=')),None)
     return {'ssh':True,'root':root,'plum':compatible,'mode_supported':mode_supported,**firmware,'architecture':lines[1].strip(),
@@ -47,8 +50,8 @@ def require(config,report=None,warn=True):
     report=report if report is not None else inspect(config)
     reasons=[]
     if not report['root']:reasons.append('нужны права root по SSH')
-    if not report['plum']:reasons.append('устройство не распознано как Станция Лайт 1 или Лайт 2')
-    if report.get('mode_supported') is False:reasons.append('Лайт 1 пока поддерживается только в нативном режиме' if report.get('model')=='lite1' else 'режим не поддерживается этой моделью')
+    if not report['plum']:reasons.append('устройство не распознано как поддерживаемая Станция')
+    if report.get('mode_supported') is False:reasons.append('Эта модель пока поддерживается только в нативном режиме' if report.get('model') in ('lite1','mini1') else 'режим не поддерживается этой моделью')
     if not report.get('firmware_files_present',report['firmware_abi_supported']):reasons.append('не удалось прочитать maind и библиотеку VQE')
     if report.get('architecture', 'aarch64') not in ARCHITECTURES:reasons.append('архитектура колонки не поддерживается')
     if report['free_data_kib'] is None or report['free_data_kib']<=12000:reasons.append('на колонке нужно больше 12 МиБ свободного места')

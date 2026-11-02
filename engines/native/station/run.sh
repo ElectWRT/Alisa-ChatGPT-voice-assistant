@@ -27,7 +27,10 @@ case "${1:-}" in
                 esac
             done
         fi
-        nohup sh "$BASE/run.sh" monitor >"$RUNTIME/daemon.log" 2>&1 </dev/null &
+        # ADB and some Dropbear shells send SIGHUP to their background job
+        # when the connection closes. A separate session keeps the runtime
+        # alive after the launcher command returns.
+        nohup setsid sh "$BASE/run.sh" monitor >"$RUNTIME/daemon.log" 2>&1 </dev/null &
         echo $! > "$RUNTIME/monitor.pid"
         echo 'Standalone runtime is starting'
         ;;
@@ -59,9 +62,19 @@ case "${1:-}" in
         "$BASE/profile.sh" bridge
         (
             if [ -r "$BASE/runtime.env" ]; then . "$BASE/runtime.env"; fi
-            # Lite 1 has no hardware mute-switch GPIO; without one the client
-            # would silence the microphone. Software mute needs a device test.
-            if grep -Fq 'yandex,station-micro' /proc/device-tree/compatible &&
+            if grep -Fq 'amlogic, axg' /proc/device-tree/compatible &&
+               grep -q '"deviceType" : "yandexmini"' /system/vendor/quasar/quasar.cfg; then
+                export ALISA_AGENT_DONOR=/bin/true
+                export ALISA_DISABLE_NATIVE_FOCUS=1
+                export ALISA_DISABLE_STUN=1
+                export LD_LIBRARY_PATH="$BASE/volume-libs:/system/vendor/quasar/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                export ALISA_PCM_DEVICE=plughw:0,0
+                export ALISA_VOLUME_FILE=/data/quasar/last_vendor_volume
+            fi
+            # Lite 1 and Mini 1 lack a debugfs mute-switch GPIO.
+            # Without a shim the client would silence the microphone. Physical mute still stops PDM.
+            if ( grep -Fq 'yandex,station-micro' /proc/device-tree/compatible ||
+                 [ "${ALISA_AGENT_DONOR:-}" = /bin/true ] ) &&
                [ -r "$BASE/mute_gpio.so" ] && ! grep -q '|mute-switch ' /sys/kernel/debug/gpio 2>/dev/null; then
                 printf ' gpio-0 (                    |mute-switch         ) in  hi\n' > "$RUNTIME/mute-gpio"
                 export ALICE_MUTE_GPIO_FILE="$RUNTIME/mute-gpio"

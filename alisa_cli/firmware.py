@@ -17,11 +17,15 @@ WARNING=('Эта сборка прошивки ещё не проверена. �
          'но работа микрофона, звука и голосовых команд не гарантируется.')
 
 
-def classify(device_tree,pair):
+def classify(device_tree,pair,device_type=None):
     tokens=set(re.split(r'[\x00\s]+',device_tree.lower()))
     model=next((name for name,(markers,_) in BUILDS.items() if tokens.intersection(markers)),None)
+    # Mini 1 shares a generic Amlogic device tree with other products.
+    # Require the firmware's explicit device type as a second identifier.
+    if model is None and device_type=='yandexmini' and {'amlogic,','axg'} <= tokens:
+        model='mini1'
     present=len(pair)==2 and all(isinstance(value,str) and re.fullmatch('[0-9a-f]{64}',value) for value in pair)
-    known=bool(model and present and tuple(pair) in BUILDS[model][1])
+    known=bool(model in BUILDS and present and tuple(pair) in BUILDS[model][1])
     status='unsupported-model' if not model else 'verified' if known else 'unverified' if present else 'unavailable'
     return {'model':model,'firmware_abi_supported':known,'firmware_files_present':present,
             'firmware_status':status,'warnings':[WARNING] if status=='unverified' else []}
